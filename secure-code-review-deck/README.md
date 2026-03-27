@@ -46,6 +46,7 @@ npm start
 ## Lab Timer
 
 On the **Hands-On Lab** slide (slide 16), there's a built-in countdown timer:
+
 - **START** — begins the 20-minute countdown
 - **RESET** — resets to 20:00
 - Timer turns orange at 5 minutes, red at 1 minute
@@ -62,22 +63,6 @@ Secret files reference covers: **Node.js**, **Python**, **Java/Spring**, **Ruby 
 - **Server**: Express (serves a single static HTML file)
 - **Fonts**: JetBrains Mono · Syne · Inter (via Google Fonts)
 - **No frontend frameworks** — vanilla JS, ~300 lines
-
-## Customise
-
-All 25 slides are plain HTML sections in `public/index.html`. Edit directly:
-
-- **Add a slide**: copy a `<section class="slide">` block
-- **Change colours**: CSS variables at the top of the `<style>` block
-- **Add your name/org**: edit the title slide (`id="s-title"`) and closing slide (`id="s-close"`)
-
-## Port
-
-Default port is `3000`. Override with:
-
-```bash
-PORT=8080 npm start
-```
 
 ## License
 
